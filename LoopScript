@@ -1,0 +1,132 @@
+extends Node2D
+
+#Textures
+var noise_texture = preload("res://TestingFolder/noise.png")
+var shader = preload("res://TestingFolder/Shader.tres")
+
+
+var _line:Line2D
+var _segments:Node2D
+var _loops:Node2D
+
+var _points:PoolVector2Array = PoolVector2Array()
+var _max_points = 65
+var _max_distance = 20
+var _width = 5
+
+func _ready() -> void:
+	_line = Line2D.new()
+	_line.set_joint_mode(Line2D.LINE_JOINT_ROUND)
+	_line.set_begin_cap_mode(Line2D.LINE_CAP_ROUND)
+	_line.set_end_cap_mode(Line2D.LINE_CAP_ROUND)
+	_line.texture_mode =Line2D.LINE_TEXTURE_TILE
+	_line.material = shader
+	_line.texture = noise_texture
+	_line.name = "_line"
+	add_child(_line)
+	_segments = Node2D.new()
+	_segments.name = "_segments"
+	add_child(_segments)
+	_loops = Node2D.new()
+	_loops.name = "_loops"
+	add_child(_loops)
+	
+func _physics_process(_delta:float) -> void:
+	if Input.is_action_pressed("left_click"):
+		position(get_global_mouse_position())
+	if Input.is_action_just_released("left_click"):
+		total_purge()
+		
+func position(pos:Vector2) -> void:
+	var point_count = _points.size()
+	if point_count == 0:
+		_points.append(pos)
+		_points.append(pos)
+		add_segment(pos, pos)
+	elif point_count == 1:
+		_points.append(pos)
+		add_segment(_points[-2], pos)
+	elif point_count > _max_points:
+		purge(point_count - _max_points)
+	else:
+		if _points[-2].distance_to(pos) > _max_distance:
+			_points.append(pos)
+			add_segment(_points[-2], pos)
+		else:
+			_points[-1] = pos
+			change_segment(_points[-2], pos)
+
+	_line.points = _points
+	process_loop()
+
+func add_segment(start:Vector2, end:Vector2) -> void:
+	var points = rotated_rectangle_points(start, end, _width)
+	var segment = Area2D.new()
+	var collision = create_collision_polygon(points)
+	segment.add_child(collision)
+	_segments.add_child(segment)
+
+func change_segment(start:Vector2, end:Vector2) -> void:
+	var points = rotated_rectangle_points(start, end, _width)
+	var segment = (_segments.get_child(_segments.get_child_count() - 1) as Area2D)
+	var collision = (segment.get_child(0) as CollisionPolygon2D)
+	collision.set_polygon(points)
+
+static func rotated_rectangle_points(start:Vector2, end:Vector2, width:float) -> Array:
+	var diff = end - start
+	var normal = diff.rotated(TAU/4).normalized()
+	var offset = normal * width * 0.5
+	return [start + offset, start - offset, end - offset, end + offset]
+
+static func create_collision_polygon(points:Array) -> CollisionPolygon2D:
+	var result = CollisionPolygon2D.new()
+	result.set_polygon(points)
+	return result
+
+func total_purge():
+	purge(_points.size())
+	purge_loops()
+
+func purge(index:int) -> void:
+	var segments = _segments.get_children()
+	for _index in range(0, index):
+		_points.remove(0)
+		if segments.size() > 0:
+			_segments.remove_child(segments[0])
+			segments[0].queue_free()
+			segments.remove(0)
+
+	_line.points = _points
+	
+func purge_loops() -> void:
+	for loop in _loops.get_children():
+		if is_instance_valid(loop):
+			loop.queue_free()
+
+func process_loop() -> void:
+	var segments = _segments.get_children()
+	for index in range(segments.size() - 1, 0, -1):
+		var segment = segments[index]
+		var candidates = segment.get_overlapping_areas()
+		for candidate in candidates:
+			var candidate_index = segments.find(candidate)
+			if candidate_index == -1:
+				continue
+
+			if abs(candidate_index - index) > 1:
+				push_loop(candidate_index, index)
+				purge(index)
+				return
+
+func push_loop(first_index:int, second_index:int) -> void:
+	purge_loops()
+	var loop = Area2D.new()
+	var points = _points
+	points.resize(second_index)
+	for point_index in first_index + 1:
+		points.remove(0)
+
+	var collision = create_collision_polygon(points)
+	loop.add_child(collision)
+	_loops.add_child(loop)
+
