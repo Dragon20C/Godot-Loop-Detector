@@ -12,6 +12,10 @@ var LoopNode : Node2D # Holds the loop when a detection is made
 func _ready() -> void:
 	Looper = Line2D.new()
 	Looper.name = "Line2D"
+	Looper.set_joint_mode(Line2D.LINE_JOINT_ROUND)
+	Looper.set_begin_cap_mode(Line2D.LINE_CAP_ROUND)
+	Looper.set_end_cap_mode(Line2D.LINE_CAP_ROUND)
+	Looper.texture_mode = Line2D.LINE_TEXTURE_TILE
 	add_child(Looper)
 	
 	SegmentNode = Node2D.new()
@@ -29,35 +33,40 @@ func _input(event):
 func _process(delta: float) -> void:
 	if Input.is_action_pressed("LeftClick"):
 		ProcessLine(MouseMotion)
+		#ProcessLine(MouseMotion)
 	elif Input.is_action_just_released("LeftClick"):
 		ClearPoints(LinePoints.size())
 
-
-func ProcessLine(MousePosition : Vector2) -> void:
+func ProcessLine(MousePosition: Vector2) -> void:
 	if LinePoints.size() == 0:
 		LinePoints.append(MousePosition)
 		LinePoints.append(MousePosition)
-		CreateSegment(MousePosition,MousePosition)
+		CreateSegment(MousePosition, MousePosition)
 	elif LinePoints.size() == 1:
 		LinePoints.append(MousePosition)
-		CreateSegment(LinePoints[-2],MousePosition)
+		CreateSegment(LinePoints[-2], MousePosition)
 	elif LinePoints.size() > MaxPoints:
 		ClearPoints(LinePoints.size() - MaxPoints)
-	else:
-		
-		var currentPosition = LinePoints[-1]
-		var distanceToTarget = (MousePosition - currentPosition).length()
 
-		while distanceToTarget > MinDistance:
-			var direction = (MousePosition - currentPosition).normalized()
+	#var currentPosition = LinePoints[-1]
+	var distanceToTarget = MousePosition.distance_to(LinePoints[-2])
+	var segmentsToAdd = int(distanceToTarget / MinDistance)
+	print((distanceToTarget / MinDistance))
+	if distanceToTarget > MinDistance:
+		for i in range(segmentsToAdd):
+			var direction = (MousePosition - LinePoints[-2]).normalized()
 			var newSegment = direction * MinDistance
-			currentPosition += newSegment
-			LinePoints.append(currentPosition)
-			CreateSegment(LinePoints[-2],currentPosition)
-			distanceToTarget = (MousePosition - currentPosition).length()
-			
+			var CurrentPosition = LinePoints[-1] + newSegment
+			LinePoints.append(CurrentPosition)
+			CreateSegment(LinePoints[-2],CurrentPosition)
+			distanceToTarget = MousePosition.distance_to(LinePoints[-2])
+	else:
+		LinePoints[-1] = MousePosition
+		UpdateSegment(LinePoints[-2],MousePosition)
+
 	Looper.points = LinePoints
 	ProcessLoop()
+
 
 func ClearPoints(Index : int):
 	for _clear in range(Index):
