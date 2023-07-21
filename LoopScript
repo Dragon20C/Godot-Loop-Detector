@@ -9,6 +9,10 @@ var LoopNode : Node2D # Holds the loop when a detection is made
 @export var MaxPoints : int = 60 # How many points that should only render.
 @export var MinDistance : int = 40 # Segment length.
 
+const FRAMES_TO_CONSIDER = 2
+const MAX_VELOCITY_THRESHOLD = 10.0
+var LastMousePositions = []
+
 func _ready() -> void:
 	Looper = Line2D.new()
 	Looper.name = "Line2D"
@@ -33,41 +37,58 @@ func _input(event):
 func _process(delta: float) -> void:
 	if Input.is_action_pressed("LeftClick"):
 		ProcessLine(MouseMotion)
-		#ProcessLine(MouseMotion)
 	elif Input.is_action_just_released("LeftClick"):
 		ClearPoints(LinePoints.size())
 
 func ProcessLine(MousePosition: Vector2) -> void:
-	if LinePoints.size() == 0:
+	if LinePoints.size() == 0: # Checks if the Points array is empty is so fill two.
 		LinePoints.append(MousePosition)
 		LinePoints.append(MousePosition)
 		CreateSegment(MousePosition, MousePosition)
-	elif LinePoints.size() == 1:
-		LinePoints.append(MousePosition)
-		CreateSegment(LinePoints[-2], MousePosition)
-	elif LinePoints.size() > MaxPoints:
+	elif LinePoints.size() > MaxPoints: # If points array is bigger then max points remove extra
 		ClearPoints(LinePoints.size() - MaxPoints)
 
-	#var currentPosition = LinePoints[-1]
+	# Check the distance between second to last point and mouse position
+	# Calculate how many segments are needed to be created
 	var distanceToTarget = MousePosition.distance_to(LinePoints[-2])
 	var segmentsToAdd = int(distanceToTarget / MinDistance)
-	print((distanceToTarget / MinDistance))
+	
+	# Check if distance is larger then a min
 	if distanceToTarget > MinDistance:
-		for i in range(segmentsToAdd):
+		# for loop segments - 1 because we dont want the last point yet.
+		for i in range(segmentsToAdd - 1):
 			var direction = (MousePosition - LinePoints[-2]).normalized()
 			var newSegment = direction * MinDistance
 			var CurrentPosition = LinePoints[-1] + newSegment
 			LinePoints.append(CurrentPosition)
 			CreateSegment(LinePoints[-2],CurrentPosition)
-			distanceToTarget = MousePosition.distance_to(LinePoints[-2])
+		# Checks mouse displacement is its smaller we add a point
+		CheckMouseDisplacement(MousePosition)
 	else:
+		# Set the very last point to the mouse to make it look like its following it
 		LinePoints[-1] = MousePosition
 		UpdateSegment(LinePoints[-2],MousePosition)
-
+	# Apply the points array to the line2D points
+	# ProcessLoop checks if the line2D has intersected with its self so create loop
 	Looper.points = LinePoints
 	ProcessLoop()
 
+func CheckMouseDisplacement(MousePosition : Vector2) -> void:
+	var CurrentMousePos = MousePosition
+	LastMousePositions.append(CurrentMousePos)
+	if LastMousePositions.size() > FRAMES_TO_CONSIDER:
+		LastMousePositions.remove_at(0)
+		
+	var TotalDisplacement = Vector2()
+	for pos in LastMousePositions:
+		TotalDisplacement += pos
+	var AverageDisplacement = TotalDisplacement / LastMousePositions.size()
+	
+	if CurrentMousePos.distance_to(AverageDisplacement) < MAX_VELOCITY_THRESHOLD:
+		LinePoints.append(CurrentMousePos)
+		CreateSegment(LinePoints[-2], CurrentMousePos)
 
+	
 func ClearPoints(Index : int):
 	for _clear in range(Index):
 		if LinePoints.size() > 0:
@@ -85,7 +106,7 @@ func ClearPoints(Index : int):
 func CreateSegment(start: Vector2, end: Vector2) -> void:
 	var points = rotated_rectangle_points(start, end, LineWidth)
 	var segment = Area2D.new()
-	segment.add_to_group("BattlePlayer")
+	segment.add_to_group("PlayerSegments")
 	var collision = create_collision_polygon(points)
 	segment.add_child(collision)
 	SegmentNode.add_child(segment)
@@ -132,6 +153,7 @@ func CreateLoop(FirstIndex:int, SecondIndex:int) -> void:
 		Points.remove_at(0)
 
 	var Collision = create_collision_polygon(Points)
+	Collision.add_to_group("PlayerAttack")
 	Loop.add_child(Collision)
 	LoopNode.add_child(Loop)
 
